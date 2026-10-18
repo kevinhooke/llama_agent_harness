@@ -2,15 +2,20 @@ import requests
 
 llama_base_url = "http://192.168.4.201:8090/v1/chat/completions"
 
+# array of messages, each interaction is appended to maintain consersation history
+messages = []
+
 while True:
     prompt = input("prompt: ")
 
     if prompt not in ("exit", "/exit"):
+        messages.append({"role": "user", "content": prompt})
+
         response = requests.post(
             llama_base_url,
             json={
                 "model": "qwen3.6-35b-a3b",
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": messages,
             },
         )
 
