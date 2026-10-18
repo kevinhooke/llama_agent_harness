@@ -21,7 +21,12 @@ while True:
 
         # print(response.json())
         if response.status_code == 200:
-            print(f"response: {response.json()['choices'][0]['message']['content']}")
+            response_text = response.json()["choices"][0]["message"]["content"]
+            print(f"response: {response_text}")
+            print()
+
+            # keep the reponse in context
+            messages.append({"role": "assistant", "content": response_text})
         else:
             print(f"error: {response.status_code}, response: {response.text}")
     else:
