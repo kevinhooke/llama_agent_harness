@@ -22,6 +22,10 @@ To use Claude models via API calls, you must have a budget for API usage (not in
 in Pro by default unless you purchase credits with Claude Console), and configure an
 API key in an env var, "ANTHROPIC_API_KEY". The key can be set in a .env file in the
 project root (see .env.example).
+
+Models with "auth_required": true in models.json send the key from the env var named
+in "api_key_env" as a Bearer token. Unsloth Studio models use "UNSLOTH_API_KEY", created
+in Studio under Settings > API.
 """
 
 
@@ -136,10 +140,18 @@ def call_model(selected_model, models, messages) -> Response:
     if not body.get("tools"):
         body.pop("tools", None)
 
-    # remote APIs read their key from the env var named in the config
+    # models with auth_required read their key from the env var named in api_key_env
+    # (loaded from .env) and send it as a Bearer token, as both the Anthropic and
+    # Unsloth Studio APIs expect
     headers = {}
-    if "api_key_env" in model_config:
-        headers["Authorization"] = f"Bearer {os.environ[model_config['api_key_env']]}"
+    if model_config.get("auth_required"):
+        key_env = model_config["api_key_env"]
+        api_key = os.environ.get(key_env)
+        if not api_key:
+            raise SystemExit(
+                f"{selected_model} requires an API key: set {key_env} in .env"
+            )
+        headers["Authorization"] = f"Bearer {api_key}"
 
     return requests.post(model_config["url"], json=body, headers=headers)
 

@@ -1,6 +1,7 @@
 {
     "qwen3.6-35b-a3b": {
         "url": "http://192.168.4.201:8090/v1/chat/completions",
+        "auth_required": false,
         "message_body": {
             "model": "qwen3.6-35b-a3b",
             "messages": [],
@@ -25,8 +26,37 @@
             ]
         }
     },
+    "unsloth-Tiel-Coder-35B-A3B-GGUF": {
+        "url": "http://192.168.4.201:8888/v1/chat/completions",
+        "auth_required": true,
+        "api_key_env": "UNSLOTH_API_KEY",
+        "message_body": {
+            "model": "huggingface.co/peculiar-ragdoll/Tiel-Coder-35B-A3B-GGUF",
+            "messages": [],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a bash command on the user's machine",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string",
+                                    "description": "The bash command to execute"
+                                }
+                            },
+                            "required": ["command"]
+                        }
+                    }
+                }
+            ]
+        }
+    },
     "opus-5.5": {
         "url": "https://api.anthropic.com/v1/chat/completions",
+        "auth_required": true,
         "api_key_env": "ANTHROPIC_API_KEY",
         "message_body": {
             "model": "claude-opus-5-5",
