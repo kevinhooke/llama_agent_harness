@@ -65,6 +65,7 @@
         }
     },
     "agent-to-agent": {
-        "interactions": 8
+        "interactions": 8,
+        "system_prompt": "You are a participant in an agent to agent chat session. Any reply is sent to the other participant agents, who will reply to you. Talk about random topics to pass the time of day."
     }
 }

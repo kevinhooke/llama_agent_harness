@@ -64,6 +64,14 @@ def main():
         # "assistant" and the other model's replies as "user"
         histories = [[] for _ in agent_models]
 
+        # in agent-to-agent mode, each model's history starts with the configured
+        # system prompt telling it that its replies go to the other participant
+        if interaction_mode == "agent-to-agent":
+            system_prompt = models[selected_model].get("system_prompt")
+            if system_prompt:
+                for history in histories:
+                    history.append({"role": "system", "content": system_prompt})
+
         while True:
             # if running in single model interaction mode, capture prompt from user
             # unless this is the first prompt from the suser for agent to agent
@@ -133,7 +141,7 @@ def main():
         print("Exiting...")
 
 
-def call_model(selected_model, models, messages) -> Response:
+def call_model(selected_model, models, messages, use_tools=True) -> Response:
 
     model_config = models[selected_model]
 
@@ -141,8 +149,10 @@ def call_model(selected_model, models, messages) -> Response:
     # copy the configured body so the loaded config isn't modified
     body = dict(model_config["message_body"], messages=messages)
 
-    # an empty tools list can be rejected by the API, so only send it when populated
-    if not body.get("tools"):
+    # an empty tools list can be rejected by the API, so only send it when populated.
+    # callers that can't run tools (e.g. the web UI) pass use_tools=False to leave
+    # them out entirely
+    if not use_tools or not body.get("tools"):
         body.pop("tools", None)
 
     # models with auth_required read their key from the env var named in api_key_env
