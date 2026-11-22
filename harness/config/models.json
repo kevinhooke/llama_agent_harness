@@ -33,5 +33,12 @@
             "messages": [],
             "tools": []
         }
+    },
+    "agent-to-agent: qwen to opus" : {
+        "models": [
+            "qwen3.6-35b-a3b",
+            "opus-5.5"
+        ],
+        "interactions": 4
     }
 }

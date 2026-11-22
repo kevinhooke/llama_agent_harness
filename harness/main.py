@@ -33,19 +33,59 @@ def main():
     with open(CONFIG_PATH, encoding="utf-8") as f:
         models = json.load(f)
 
-        selected_model = select_model(models)
+        interaction_mode, selected_model = select_model(models)
+        current_model = 0
+        initial_prompt = ""
+        agent_to_agent_continue = False
+        last_agent_to_agent_response = ""
 
-        # array of messages, each interaction is appended to maintain consersation
-        # history
-        messages = []
+        # agent-to-agent entries list the models to alternate between; single mode
+        # is a list of one
+        if interaction_mode == "agent-to-agent":
+            agent_models = models[selected_model]["models"]
+        else:
+            agent_models = [selected_model]
+
+        # one conversation history per model, each interaction is appended to
+        # maintain conversation history
+        # when using 1 model, histories[0] holds the history
+        # when using agent to agent, histories[0] is history with model 1,
+        # histories[1] is model 2, etc. Each model sees its own replies as
+        # "assistant" and the other model's replies as "user"
+        histories = [[] for _ in agent_models]
 
         while True:
-            prompt = input("prompt: ")
+            # if running in single model interaction mode, capture prompt from user
+            # unless this is the first prompt from the suser for agent to agent
+            if interaction_mode == "single" or (
+                interaction_mode == "agent-to-agent" and initial_prompt == ""
+            ):
+                prompt = input("prompt: ")
+            else:
+                # otherwise the next prompt is the last reply from the other model
+                # unless the number of interactions has reached 0
+                prompt = last_agent_to_agent_response
 
-            if prompt not in ("exit", "/exit"):
+            if (
+                interaction_mode == "agent-to-agent"
+                and models[selected_model].get("interactions") > 0
+            ):
+                agent_to_agent_continue = True
+            else:
+                agent_to_agent_continue = False
+
+            if not initial_prompt:
+                initial_prompt = prompt
+
+            if prompt not in ("exit", "/exit") and (
+                interaction_mode == "single" or agent_to_agent_continue
+            ):
+                # the model whose turn it is, and its own history
+                model_name = agent_models[current_model]
+                messages = histories[current_model]
                 messages.append({"role": "user", "content": prompt})
 
-                response = call_model(selected_model, models, messages)
+                response = call_model(model_name, models, messages)
 
                 print(response.json())
                 if response.status_code == 200:
@@ -53,15 +93,29 @@ def main():
                     tool_calls = response.json()["choices"][0]["message"].get(
                         "tool_calls"
                     )
+                    print()
                     print(f"response: {response_text}")
                     if tool_calls:
                         messages = invoke_tools(
-                            tool_calls, selected_model, models, messages
+                            tool_calls, model_name, models, messages
                         )
                     print()
 
                     # keep the response in context
                     messages.append({"role": "assistant", "content": response_text})
+
+                    if interaction_mode == "agent-to-agent":
+                        remaining_interactions = models[selected_model].get(
+                            "interactions"
+                        )
+                        remaining_interactions -= 1
+                        models[selected_model]["interactions"] = remaining_interactions
+
+                        # save reply from this model and input to the next
+                        last_agent_to_agent_response = response_text
+                        # hand the next turn to the other model
+                        current_model = (current_model + 1) % len(agent_models)
+
                 else:
                     print(f"error: {response.status_code}, response: {response.text}")
             else:
@@ -149,5 +203,8 @@ def select_model(models):
     while True:
         choice = input("Select model to use: ")
         if choice.isdigit() and 1 <= int(choice) <= len(names):
-            return names[int(choice) - 1]
+            model_name = names[int(choice) - 1]
+            if model_name.startswith("agent-to-agent"):
+                return "agent-to-agent", model_name
+            return "single", model_name
         print(f"Enter a number between 1 and {len(names)}")
