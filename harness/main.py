@@ -8,15 +8,26 @@ from dotenv import load_dotenv
 from requests import Response
 
 CONFIG_PATH = Path(__file__).parent / "config" / "models.json"
+SETTINGS_PATH = Path(__file__).parent / "config" / "settings.json"
 ENV_PATH = Path(__file__).parent.parent / ".env"
+
+# harness settings, e.g. dump_api_payloads to print request and response JSON
+with open(SETTINGS_PATH, encoding="utf-8") as f:
+    SETTINGS = json.load(f)
 
 """Simple harness for interacting with LLMs via the Anthropic API style messages.
 
 Available models are configured in config/models.json. Configure and update as needed.
 
+Harness settings are in config/settings.json. Set "dump_api_payloads" to true to print
+the JSON sent to and received from the model APIs.
+
 Run with `poetry run harness`.
 
-At start up, prompts user to select which model to interact with.
+At start up, prompts user to select which model to interact with. Selecting
+agent-to-agent prompts for two of the configured models, then after the user's first
+prompt the two models converse with each other for the configured number of
+interactions.
 
 To use Claude models via API calls, you must have a budget for API usage (not included
 in Pro by default unless you purchase credits with Claude Console), and configure an
@@ -37,18 +48,13 @@ def main():
     with open(CONFIG_PATH, encoding="utf-8") as f:
         models = json.load(f)
 
-        interaction_mode, selected_model = select_model(models)
+        # agent_models holds the models to alternate between: the two the user
+        # picked for agent-to-agent, or a list of one in single mode
+        interaction_mode, selected_model, agent_models = select_model(models)
         current_model = 0
         initial_prompt = ""
         agent_to_agent_continue = False
         last_agent_to_agent_response = ""
-
-        # agent-to-agent entries list the models to alternate between; single mode
-        # is a list of one
-        if interaction_mode == "agent-to-agent":
-            agent_models = models[selected_model]["models"]
-        else:
-            agent_models = [selected_model]
 
         # one conversation history per model, each interaction is appended to
         # maintain conversation history
@@ -91,14 +97,13 @@ def main():
 
                 response = call_model(model_name, models, messages)
 
-                print(response.json())
                 if response.status_code == 200:
                     response_text = response.json()["choices"][0]["message"]["content"]
                     tool_calls = response.json()["choices"][0]["message"].get(
                         "tool_calls"
                     )
                     print()
-                    print(f"response: {response_text}")
+                    print(f"[{model_name}]: {response_text}")
                     if tool_calls:
                         messages = invoke_tools(
                             tool_calls, model_name, models, messages
@@ -153,7 +158,16 @@ def call_model(selected_model, models, messages) -> Response:
             )
         headers["Authorization"] = f"Bearer {api_key}"
 
-    return requests.post(model_config["url"], json=body, headers=headers)
+    if SETTINGS.get("dump_api_payloads"):
+        print(f"request payload: {json.dumps(body, indent=2)}")
+
+    response = requests.post(model_config["url"], json=body, headers=headers)
+
+    # response.text rather than .json() so non-JSON error bodies can still be dumped
+    if SETTINGS.get("dump_api_payloads"):
+        print(f"response payload: {response.text}")
+
+    return response
 
 
 def invoke_tools(tool_calls, selected_model, models, messages: list) -> list:
@@ -200,7 +214,7 @@ def invoke_tools(tool_calls, selected_model, models, messages: list) -> list:
             response = call_model(selected_model, models, messages)
             response_text = response.json()["choices"][0]["message"]["content"]
             tool_calls = response.json()["choices"][0]["message"].get("tool_calls")
-            print(f"response: {response_text}")
+            print(f"[{selected_model}]: {response_text}")
         else:
             print(f"unknown or unexpected tool requested: {tool}")
 
@@ -208,15 +222,27 @@ def invoke_tools(tool_calls, selected_model, models, messages: list) -> list:
 
 
 def select_model(models):
-    names = list(models)
+    model_name = choose(list(models), "Select model to use: ")
+    if not model_name.startswith("agent-to-agent"):
+        return "single", model_name, [model_name]
+
+    # agent-to-agent: pick the two models to converse from the configured models,
+    # leaving out the agent-to-agent entry itself
+    chat_models = [name for name in models if "message_body" in models[name]]
+    print()
+    model_1 = choose(chat_models, "Select model 1: ")
+    print()
+    model_2 = choose(chat_models, "Select model 2: ")
+    return "agent-to-agent", model_name, [model_1, model_2]
+
+
+def choose(names, prompt):
+    # print a numbered menu and return the name the user picks
     for i, name in enumerate(names, start=1):
         print(f"{i} : {name}")
 
     while True:
-        choice = input("Select model to use: ")
+        choice = input(prompt)
         if choice.isdigit() and 1 <= int(choice) <= len(names):
-            model_name = names[int(choice) - 1]
-            if model_name.startswith("agent-to-agent"):
-                return "agent-to-agent", model_name
-            return "single", model_name
+            return names[int(choice) - 1]
         print(f"Enter a number between 1 and {len(names)}")
